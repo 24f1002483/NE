@@ -1,0 +1,152 @@
+name: Multi-Platform Matrix Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        # Three different variants combining OS and Node versions
+        include:
+          - os: ubuntu-latest
+            node-version: 18
+            variant: linux-node18
+          - os: windows-latest
+            node-version: 20
+            variant: windows-node20
+          - os: macos-latest
+            node-version: 22
+            variant: macos-node22
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Matrix Build Identifier
+      id: matrix-baddcd6
+      run: |
+        echo "Building for OS: ${{ matrix.os }} with Node.js ${{ matrix.node-version }}"
+        echo "Variant: ${{ matrix.variant }}"
+        echo "Build timestamp: $(date)"
+        echo "matrix-baddcd6 identifier executed successfully"
+    
+    - name: Generate build information
+      run: |
+        # Create build information as JSON
+        cat > build-info.json << EOF
+        {
+          "platform": "${{ matrix.os }}",
+          "node_version": "${{ matrix.node-version }}",
+          "variant": "${{ matrix.variant }}",
+          "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "commit_hash": "${{ github.sha }}",
+          "workflow_run_id": "${{ github.run_id }}"
+        }
+        EOF
+        
+        # Create a simple build output file
+        echo "Build output for ${{ matrix.variant }}" > output.txt
+        echo "Platform: ${{ matrix.os }}" >> output.txt
+        echo "Node.js version: ${{ matrix.node-version }}" >> output.txt
+        echo "Build completed at: $(date)" >> output.txt
+        echo "GitHub Run ID: ${{ github.run_id }}" >> output.txt
+        
+        # Create a platform-specific simulated binary
+        mkdir -p dist
+        echo "Simulated binary for ${{ matrix.variant }}" > dist/app-${{ matrix.variant }}
+        echo "Platform: ${{ matrix.os }}" >> dist/app-${{ matrix.variant }}
+        echo "Build checksum: $(echo ${{ github.run_id }}-${{ matrix.variant }} | sha256sum | cut -d' ' -f1)" >> dist/app-${{ matrix.variant }}
+    
+    - name: Run platform-specific build simulation
+      run: |
+        # Simulate different build processes based on platform
+        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          echo "Running Linux-specific build steps..."
+          echo "linux-features: [performance-optimized, systemd-integration]" >> build-info.json
+        elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+          echo "Running Windows-specific build steps..."
+          echo "windows-features: [win32-api, registry-integration]" >> build-info.json
+        elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+          echo "Running macOS-specific build steps..."
+          echo "macos-features: [metal-acceleration, spotlight-integration]" >> build-info.json
+        fi
+        
+        # Add some build metrics
+        echo "build_metrics:" >> output.txt
+        echo "  processing_time: $(( RANDOM % 100 + 50 ))ms" >> output.txt
+        echo "  memory_usage: $(( RANDOM % 500 + 200 ))MB" >> output.txt
+        echo "  success: true" >> output.txt
+    
+    - name: Validate build artifacts
+      run: |
+        # Ensure artifacts are non-empty
+        echo "Validating build artifacts..."
+        [ -s output.txt ] || exit 1
+        [ -s build-info.json ] || exit 1
+        [ -s dist/app-${{ matrix.variant }} ] || exit 1
+        echo "All artifacts validated successfully!"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-baddcd6-${{ matrix.variant }}
+        path: |
+          output.txt
+          build-info.json
+          dist/
+        retention-days: 7
+    
+    - name: Upload combined artifact (optional)
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-baddcd6-combined-${{ matrix.variant }}
+        path: .
+        retention-days: 5
+
+  # Optional: Post-build validation job
+  validate-builds:
+    name: Validate All Builds
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Validate artifact count and content
+      run: |
+        echo "Validating downloaded artifacts..."
+        count=$(find artifacts -name "build-baddcd6-*" -type d | wc -l)
+        echo "Found $count build-baddcd6 artifacts"
+        
+        # Check each artifact has content
+        for artifact in artifacts/build-baddcd6-*; do
+          echo "Validating $artifact"
+          [ -s "$artifact/output.txt" ] || exit 1
+          [ -s "$artifact/build-info.json" ] || exit 1
+          [ -s "$artifact/dist/app-"* ] || exit 1
+          echo "✓ $artifact validated"
+        done
+        
+        if [ $count -ge 3 ]; then
+          echo "✅ Success: Found at least 3 artifacts with prefix build-baddcd6"
+        else
+          echo "❌ Error: Expected at least 3 artifacts, found $count"
+          exit 1
+        fi
